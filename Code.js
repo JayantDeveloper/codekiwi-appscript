@@ -1,11 +1,11 @@
-const BACKEND_URL = "https://tomato-slides.loca.lt/api/sessions/upload";
-const TEACHER_VIEW_BASE_URL = "http://localhost:3000/teacher/";
-const CODING_SLIDE_MARKER = "[TOMATOCODE_QUESTION]"; 
+const BACKEND_URL = "https://codekiwi-app-backend.onrender.com/api/sessions/upload";
+const TEACHER_VIEW_BASE_URL = "https://www.codekiwi.app/teacher/";
+const CODING_SLIDE_MARKER = "Code Question:";
 
 function onOpen(e) {
   SlidesApp.getUi()
     .createAddonMenu()
-    .addItem('Open TomatoCode Controls', 'openSidebar')
+    .addItem('Open CodeKiwi Controls', 'openSidebar')
     .addToUi();
 }
 
@@ -15,7 +15,7 @@ function onInstall(e) {
 
 function openSidebar() {
   const html = HtmlService.createHtmlOutputFromFile('Sidebar')
-    .setTitle('TomatoCode Controls');
+    .setTitle('CodeKiwi Controls');
   SlidesApp.getUi().showSidebar(html);
 }
 
@@ -41,7 +41,7 @@ function addInteractiveSlideMarker() {
       .asShape().getText().setText(CODING_SLIDE_MARKER + "\nPrompt: [Enter your question prompt here]");
   } else {
     const notes = speakerNotesShape.getText().asString();
-    if (!notes.includes(CODING_SLIDE_MARKER)) {
+    if (!notes.startsWith(CODING_SLIDE_MARKER)) {
       speakerNotesShape.getText().insertText(0, CODING_SLIDE_MARKER + "\nPrompt: [Enter your question prompt here]\n\n");
     } else {
       SlidesApp.getUi().alert("This slide is already marked as a coding question.");
@@ -56,26 +56,31 @@ function initiateLessonSession() {
   const presentation = SlidesApp.getActivePresentation();
   const presentationTitle = presentation.getName();
   const presentationId = presentation.getId();
-  const file = DriveApp.getFileById(presentationId);
-  const pdfBlob = file.getAs('application/pdf').setName(presentationTitle + '.pdf');
 
-  // ✅ Extract speaker notes from each slide
-  const notesArray = presentation.getSlides().map(slide => {
-    const speakerNotesShape = slide.getNotesPage().getSpeakerNotesShape();
-    if (!speakerNotesShape) return "";
-    return speakerNotesShape.getText().asString().trim();
+  const file = DriveApp.getFileById(presentationId);
+  const fileBase64 = Utilities.base64Encode(file.getAs('application/pdf').getBytes());
+
+  const notesArray = presentation.getSlides().map(function(slide) {
+    const shape = slide.getNotesPage().getSpeakerNotesShape();
+    return shape ? shape.getText().asString().trim() : "";
   });
 
-  const formData = {
-    file: pdfBlob,
-    presentationId,
-    title: presentationTitle,
-    notes: JSON.stringify(notesArray), // 👈 Send notes as string
-  };
+  const slidesUrl = "https://docs.google.com/presentation/d/" + presentationId + "/edit";
+  const secret = PropertiesService.getScriptProperties().getProperty('APPSCRIPT_SECRET') || '';
 
   const options = {
     method: 'post',
-    payload: formData,
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      presentationId: presentationId,
+      title: presentationTitle,
+      notes: notesArray,
+      slidesUrl: slidesUrl,
+      fileBase64: fileBase64,
+    }),
+    headers: {
+      'x-codekiwi-secret': secret,
+    },
     muteHttpExceptions: true,
   };
 
@@ -88,12 +93,10 @@ function initiateLessonSession() {
       const jsonResponse = JSON.parse(responseBody);
       if (jsonResponse.success && jsonResponse.sessionCode) {
         return TEACHER_VIEW_BASE_URL + jsonResponse.sessionCode;
-      } else {
-        throw new Error("Unexpected response: " + responseBody);
       }
-    } else {
-      throw new Error(`Backend error (${responseCode}): ${responseBody}`);
+      throw new Error("Unexpected response: " + responseBody);
     }
+    throw new Error("Backend error (" + responseCode + "): " + responseBody);
   } catch (err) {
     console.error("initiateLessonSession error:", err);
     throw new Error("Failed to start lesson session. " + err.message);
