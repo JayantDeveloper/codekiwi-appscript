@@ -66,7 +66,7 @@ function initiateLessonSession() {
   });
 
   const slidesUrl = "https://docs.google.com/presentation/d/" + presentationId + "/edit";
-  const secret = PropertiesService.getScriptProperties().getProperty('APPSCRIPT_SECRET') || '';
+  const secret = PropertiesService.getScriptProperties().getProperty('API_SECRET') || '';
 
   const options = {
     method: 'post',
